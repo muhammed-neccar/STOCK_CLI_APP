@@ -22,8 +22,8 @@ class Sqldb {
     gpu TEXT,
     price REAL NOT NULL,
     added_date TEXT NOT null,
-    last_modified TEXT
-
+    last_modified TEXT,
+    is_sold INTEGER DEFAULT 0
     );
 ''');
 
@@ -31,10 +31,12 @@ class Sqldb {
 
   CREATE TABLE IF NOT EXISTS sales(
   sales_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
   laptop_id INTEGER NOT NULL,
   customer_name TEXT NOT NULL,
   sale_date TEXT NOT NULL,
-  price_at_sale REAL BOT NULL,
+  price_at_sale REAL NOT NULL,
   vat REAL NOT NULL,
   total_price REAL NOT NULL,
   FOREIGN KEY (laptop_id) REFERENCES laptops(id)
@@ -42,6 +44,7 @@ class Sqldb {
 ''');
     print("create database is sucssufly.");
   }
+  
 
   void insertLaptop({
     required String brand,
@@ -65,14 +68,14 @@ class Sqldb {
   }
 
   void getAllLaptops() {
-    final ResultSet result = db.select("SELECT *FROM laptops");
+    final ResultSet result = db.select("SELECT * FROM laptops WHERE is_sold = 0");
 
     if (result.isEmpty) {
       print("no laptops to show");
     } else {
       print("laptops list: ");
       for (final row in result) {
-        print('ID: ${row['id']} | ${row['brand']} | ${row['model']}  | ${row['storage']}  | ${row['ram']} -  \$${row['price']} -  ${row['added_date']}');
+        print('ID: ${row['id']} | ${row['brand']} | ${row['model']}  | ${row['storage']}  | ${row['ram']} -  \$${row['price']} -  ${row['added_date']}   |     ${row['is_sold']}'     );
       }
     }
   }
@@ -105,39 +108,58 @@ class Sqldb {
 
   void sellLaptop({required int laptopId, required String customerName}) {
     final now = DateTime.now().toIso8601String();
-    final Result = db.select("SELECT price FROM laptops WHERE ID = ?", [
-      laptopId,
-    ]);
+    final result = db.select("SELECT brand , model , price, is_sold FROM laptops WHERE id = ? ",  [laptopId]);
 
-    if (Result.isEmpty) {
+    if (result.isEmpty) {
       print("Laptop not found.");
       return;
     }
 
-    final price = Result.first['price'] as double;
+    final row = result.first;
+    if(row['is_sold'] ==  1)
+    {
+      print("this laptop has already been sold.");
+    }
+    final brand  = row['brand'] as String;
+    final model  = row['model'] as String;
+    final price = row['price'] as double;
     final vat = price * 0.19;
     final total = price + vat;
 
     db.execute(
       '''
     
-    INSERT INTO sales (laptop_id, customer_name,
-     sale_date , price_at_sale,vat,total_price)
-    VALUES (?,?,?,?,?,?)
+    INSERT INTO sales (
+    laptop_id, 
+    brand,
+    model,
+    customer_name,
+    sale_date ,
+    price_at_sale,
+    vat,
+    total_price
+      )
+    VALUES (?,?,?,?,?,?,?,?)
 ''',
-      [laptopId, customerName, now, price, vat, total],
+      [laptopId, brand, model , customerName, now, price, vat, total],
     );
 
+  db.execute(
+    "UPDATE laptops SET is_sold = 1, last_modified = ? WHERE id = ?",
+    [now, laptopId],
+  );
     print("sale completed. Total: \$${total.toStringAsFixed(2)}");
-    print("customer name:  ${customerName}");
   }
 
   void monthlyReport(int month, int year) {
     final result = db.select('''
       
-      SELECT s.sales_id , l.brand, l.model , s.customer_name
-      s.sale_date , s.total_price FROM sales s
-      JOIN laptops 1 ON s.laptop_id = l.id
+      SELECT s.sales_id ,
+      l.brand, l.model ,
+      s.customer_name,
+      s.sale_date ,
+      s.total_price FROM sales s
+      JOIN laptops l ON s.laptop_id = l.id
 ''');
 
     print("sales Report for $month/$year: \n");
